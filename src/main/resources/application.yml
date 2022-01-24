@@ -2,8 +2,25 @@ server:
   port: 2333
 
 spring:
+  kafka:
+    bootstrap-servers:
+    producer:
+      acks: 1
+    consumer:
+      auto-commit-interval: 2000
+      auto-offset-reset: latest
+      max-poll-records: 50
+      enable-auto-commit: false
+
+
+    listener:
+      concurrency: 1
+      ack-mode: manual_immediate
+      missing-topics-fatal: false
+
   rabbitmq:
     host: localhost
     port: 5672
     username: guest
     password: guest
+

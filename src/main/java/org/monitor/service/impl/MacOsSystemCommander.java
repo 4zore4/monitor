@@ -23,6 +23,8 @@
 package org.monitor.service.impl;
 
 
+import cn.hutool.core.convert.Convert;
+import cn.hutool.core.text.CharPool;
 import cn.hutool.core.util.StrUtil;
 
 import com.alibaba.fastjson.JSONObject;
@@ -60,7 +62,7 @@ public class MacOsSystemCommander {
 		if (length > 3) {
 			String cpus = split[3];
 			// cpu占比
-			Cpu cpu = getLinuxCpu(cpus);
+			Cpu cpu = getMacOsCpu(cpus);
 			jsonObject.put("cpu", cpu);
 		}
 		if (length > 6){
@@ -81,5 +83,67 @@ public class MacOsSystemCommander {
 	public String emptyLogFile(File file) {
 		return null;
 	}
+
+	public static Cpu getMacOsCpu(String info){
+		Cpu cpu = new Cpu();
+		if (StrUtil.isEmpty(info)){
+			return null;
+		}
+		int i = info.indexOf(CharPool.COLON);
+		String[] split = info.substring(i + 1).split(StrUtil.COMMA);
+		for (String str : split) {
+			if (str.contains("idle")) {
+				String value = str.split(StrUtil.SPACE)[1].replace("%", "");
+				double val = Convert.toDouble(value, 0.0);
+				cpu.setIdle(val);
+				cpu.setTotal(100 - val);
+			}
+			if (str.contains("user")){
+				String value = str.split(StrUtil.SPACE)[1].replace("%", "");
+				double val = Convert.toDouble(value, 0.0);
+				cpu.setUser(val);
+			}
+			if (str.contains("sys")){
+				String value = str.split(StrUtil.SPACE)[1].replace("%", "");
+				double val = Convert.toDouble(value, 0.0);
+				cpu.setSys(val);
+			}
+		}
+		return cpu;
+	}
+
+	public static Memory getLinuxMemory(String info){
+		Memory memory = new Memory();
+		if (StrUtil.isEmpty(info)){
+			return null;
+		}
+		double used = 0;
+		double free = 0;
+
+		int index = info.indexOf(CharPool.COLON) + 1;
+		String[] split = info.substring(index).split(StrUtil.COMMA);
+		for (String str : split){
+			System.out.println(str);
+			if (str.contains("unused.")){
+				String value = str.split(StrUtil.SPACE)[1].replace("M","");
+				free = Convert.toDouble(value, 0.0);
+				memory.setUnused(free);
+			}else if (str.contains("used")){
+				String[] value = str.split(StrUtil.SPACE);
+				if (Convert.toInt(value[1].indexOf("M")) > -1){
+					value[1].replace("M","");
+				}
+				if (Convert.toInt(value[1].indexOf("G")) > -1){
+					String res = value[1].replace("G","");
+					used = Convert.toDouble(res , 0.0) * 1024;
+
+				}
+				memory.setUsed(used);
+			}
+		}
+		memory.setTotal(used / (used+ free));
+		return memory;
+	}
+
 
 }

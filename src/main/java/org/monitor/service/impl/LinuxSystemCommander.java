@@ -12,34 +12,44 @@ import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Component
-public class LinuxSystemCommander  {
-//    @Override
+public class LinuxSystemCommander extends AbstractSystemCommander  {
+
+    @Override
     public JSONObject getAllMonitor() {
-        String result = CommandUtil.execSystemCommand("top -n 1");
+        String result = CommandUtil.execSystemCommand("top -i -b -n 1");
         if (StrUtil.isEmpty(result)){
             return null;
         }
         String[] split = result.split(StrUtil.LF);
         int length = split.length;
         JSONObject jsonObject = new JSONObject();
+
         if (length >= 2){
             String cpus = split[2];
             Cpu cpu = getLinuxCpu(cpus);
             jsonObject.put("cpu",cpu);
         }
+        if (length >= 3){
+            String mem = split[3];
+            Memory memory = getLinuxMemory(mem);
+            jsonObject.put("memory",memory);
+        }
+        jsonObject.put("disk",getHardDisk());
 
         return jsonObject;
     }
 
-//    @Override
+    @Override
     public List<Object> getProcessList(String processName) {
         return null;
     }
 
-//    @Override
+    @Override
     public String emptyLogFile(File file) {
         return null;
     }
@@ -51,59 +61,72 @@ public class LinuxSystemCommander  {
         if (StrUtil.isEmpty(info)){
             return null;
         }
-            int i = info.indexOf(CharPool.COLON);
-            String[] split = info.substring(i + 1).split(StrUtil.COMMA);
-            for (String str : split) {
-                if (str.contains("idle")) {
-                    String value = str.split(StrUtil.SPACE)[1].replace("%", "");
-                    double val = Convert.toDouble(value, 0.0);
-                    cpu.setIdle(val);
-                    cpu.setTotal(100 - val);
-                }
-                if (str.contains("user")){
-                    String value = str.split(StrUtil.SPACE)[1].replace("%", "");
-                    double val = Convert.toDouble(value, 0.0);
-                    cpu.setUser(val);
-                }
-                if (str.contains("sys")){
-                    String value = str.split(StrUtil.SPACE)[1].replace("%", "");
-                    double val = Convert.toDouble(value, 0.0);
-                    cpu.setSys(val);
-                }
-            }
+        HashMap<String,Double> cpuData = getInfoData(info);
+//        "%Cpu(s):  3.1 us,  3.1 sy,  0.0 ni, 93.8 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st\n" +
+
+        cpu.setUser(cpuData.get("us"));
+        cpu.setSys(cpuData.get("sy"));
+        cpu.setIdle(cpuData.get("id"));
+        cpu.setTotal(100.0-cpuData.get("id"));
+
+
         return cpu;
     }
 
-    public static Memory getLinuxMemory(String info){
+
+    public static Memory getLinuxMemory(String info) {
         Memory memory = new Memory();
-        if (StrUtil.isEmpty(info)){
+        if (StrUtil.isEmpty(info)) {
             return null;
         }
-        double used = 0;
-        double free = 0;
+//        "MiB Mem :   3935.6 total,    607.7 free,    599.8 used,   2728.1 buff/cache\n"
+        int i = info.indexOf(CharPool.COLON);
+        String[] split = info.substring(i + 1).split(StrUtil.COMMA);
 
-        int index = info.indexOf(CharPool.COLON) + 1;
-        String[] split = info.substring(index).split(StrUtil.COMMA);
-        for (String str : split){
-            System.out.println(str);
-            if (str.contains("unused.")){
-                String value = str.split(StrUtil.SPACE)[1].replace("M","");
+        double total = 0, free = 0, used = 0;
+        for (String str : split) {
+            str = str.trim();
+            if (str.endsWith("free")) {
+                // 减去了 buff
+                String value = str.replace("free", "").replace("k", "").trim();
                 free = Convert.toDouble(value, 0.0);
                 memory.setUnused(free);
-            }else if (str.contains("used")){
-                String[] value = str.split(StrUtil.SPACE);
-                if (Convert.toInt(value[1].indexOf("M")) > -1){
-                    value[1].replace("M","");
-                }
-                if (Convert.toInt(value[1].indexOf("G")) > -1){
-                    String res = value[1].replace("G","");
-                    used = Convert.toDouble(res , 0.0) * 1024;
-
-                }
+            }
+            if (str.endsWith("total")) {
+                String value = str.replace("total", "").replace("k", "").trim();
+                total = Convert.toDouble(value, 0.0);
+                memory.setTotal(total);
+            }
+            if (str.endsWith("used")) {
+                // 计算出时间使用
+                String value = str.replace("used", "").replace("k", "").trim();
+                used = Convert.toDouble(value, 0.0);
                 memory.setUsed(used);
             }
         }
-        memory.setTotal(used / (used+ free));
         return memory;
     }
+
+
+    private static HashMap<String,Double> getInfoData(String info){
+        if (StrUtil.isEmpty(info)){
+            return null;
+        }
+        int i = info.indexOf(CharPool.COLON);
+        String[] split = info.substring(i + 1).split(StrUtil.COMMA);
+//        %Cpu(s):  3.1 us,  3.1 sy,  0.0 ni, 93.8 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+        HashMap<String,Double> data = new HashMap<>();
+
+        for (String str : split) {
+            str = str.trim();
+
+            String value = str.substring(0,str.length() - 2).trim();
+            String tag = str.substring(str.length() -2);
+            value = value.replace("%","");
+            data.put(tag, Convert.toDouble(value,0.0));
+
+        }
+        return data;
+    }
+
 }
